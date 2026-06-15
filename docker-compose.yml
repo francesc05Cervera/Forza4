@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  server:
+    build: ./server
+    ports:
+      - "9090:9090"
