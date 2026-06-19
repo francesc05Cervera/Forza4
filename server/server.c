@@ -7,8 +7,9 @@
 #include "game.h"
 
 #define PORT 9090
+#define MAX_CLIENT 100
 
-int client_connessi[100];
+int client_connessi[MAX_CLIENT];
 int num_client_connessi = 0;
 
 void broadcast_notifica(int id_partita, char *msg) {
@@ -44,6 +45,10 @@ void *gestisci_client(void *socket_desc) {
 
         if (strncmp(buffer, "CREATE", 6) == 0) {
             mio_id_partita = crea_partita(sock);
+            if (mio_id_partita == -1) {
+                write(sock, "ERRORE;Nessuna partita disponibile\n", 35);
+                continue;
+            }
             mio_giocatore = 1;
             sprintf(risposta, "PARTITA_CREATA;%d\n", mio_id_partita);
             write(sock, risposta, strlen(risposta));
@@ -68,8 +73,12 @@ void *gestisci_client(void *socket_desc) {
             }
         }
         else if (strncmp(buffer, "RISPOSTA_JOIN", 13) == 0) {
+            if (mio_id_partita < 0) {
+                write(sock, "ERRORE;Nessuna partita attiva\n", 30);
+                continue;
+            }
             char esito[10];
-            sscanf(buffer, "RISPOSTA_JOIN;%s", esito);
+            sscanf(buffer, "RISPOSTA_JOIN;%9s", esito);
             
             if (strcmp(esito, "SI") == 0) {
                 gestisci_risposta_join(mio_id_partita, 1);
@@ -89,6 +98,10 @@ void *gestisci_client(void *socket_desc) {
             }
         }
         else if (strncmp(buffer, "MOVE", 4) == 0) {
+            if (mio_id_partita < 0) {
+                write(sock, "ERRORE;Nessuna partita attiva\n", 30);
+                continue;
+            }
             int colonna;
             sscanf(buffer, "MOVE;%d", &colonna);
             
@@ -127,6 +140,10 @@ void *gestisci_client(void *socket_desc) {
             }
         }
         else if (strncmp(buffer, "REMATCH", 7) == 0) {
+            if (mio_id_partita < 0) {
+                write(sock, "ERRORE;Nessuna partita attiva\n", 30);
+                continue;
+            }
             pthread_mutex_lock(&partite[mio_id_partita].lock_partita);
             if (partite[mio_id_partita].stato == TERMINATA) {
                 partite[mio_id_partita].voti_rematch++; 
@@ -147,12 +164,19 @@ void *gestisci_client(void *socket_desc) {
             }
         }
         else if (strncmp(buffer, "NO_REMATCH", 10) == 0) {
-            int altro_socket = (mio_giocatore == 1) ? partite[mio_id_partita].socket_g2 : partite[mio_id_partita].socket_g1;
-            write(altro_socket, "ABBANDONO\n", 10);
-            
+            if (mio_id_partita < 0) {
+                write(sock, "ERRORE;Nessuna partita attiva\n", 30);
+                continue;
+            }
+            /* FIX: lettura di altro_socket dentro il mutex per evitare race condition */
             pthread_mutex_lock(&partite[mio_id_partita].lock_partita);
-            partite[mio_id_partita].stato = LIBERA; 
+            int altro_socket = (mio_giocatore == 1)
+                ? partite[mio_id_partita].socket_g2
+                : partite[mio_id_partita].socket_g1;
+            partite[mio_id_partita].stato = LIBERA;
             pthread_mutex_unlock(&partite[mio_id_partita].lock_partita);
+
+            write(altro_socket, "ABBANDONO\n", 10);
 
             char msg_notifica[100];
             sprintf(msg_notifica, "NOTIFICA;La stanza della partita ID %d e' stata chiusa ed e' di nuovo libera.\n", mio_id_partita);
@@ -184,19 +208,16 @@ int main() {
 
     inizializza_partite(); 
 
-    // Creazione del socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("Creazione socket fallita"); 
         exit(EXIT_FAILURE);
     }
 
-    // 1. Abilita SO_REUSEADDR
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         perror("setsockopt SO_REUSEADDR fallita"); 
         exit(EXIT_FAILURE);
     }
 
-    // 2. Abilita SO_REUSEPORT (se supportato dal sistema)
     #ifdef SO_REUSEPORT
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
         perror("setsockopt SO_REUSEPORT fallita"); 
@@ -204,18 +225,15 @@ int main() {
     }
     #endif
 
-    // Configurazione indirizzo e porta
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    // Bind
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Bind fallito"); 
         exit(EXIT_FAILURE);
     }
 
-    // Listen
     if (listen(server_fd, 10) < 0) {
         perror("Listen fallito"); 
         exit(EXIT_FAILURE);
@@ -223,19 +241,24 @@ int main() {
 
     printf("Server C Completato! In attesa sulla porta %d...\n", PORT);
 
-    // Ciclo principale di accettazione
     while(1) {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
             perror("Accept fallito");
             continue;
         }
 
-        // Registrazione nuovo client in mutua esclusione
+        /* FIX: bounds check prima di inserire nell'array client_connessi */
         pthread_mutex_lock(&lock_globale);
-        client_connessi[num_client_connessi++] = new_socket;
-        pthread_mutex_unlock(&lock_globale);
+        if (num_client_connessi < MAX_CLIENT) {
+            client_connessi[num_client_connessi++] = new_socket;
+            pthread_mutex_unlock(&lock_globale);
+        } else {
+            pthread_mutex_unlock(&lock_globale);
+            write(new_socket, "ERRORE;Server pieno\n", 20);
+            close(new_socket);
+            continue;
+        }
 
-        // Allocazione sicura del descrittore per il thread
         int *new_sock = malloc(sizeof(int));
         *new_sock = new_socket;
         pthread_t sn_thread;

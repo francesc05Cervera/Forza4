@@ -85,44 +85,62 @@ int inserisci_gettone(int id_partita, int giocatore, int colonna) {
 
 int controlla_vittoria(int id_partita) {
     int giocatore;
+
+    /* Orizzontale */
     for (int r = 0; r < RIGHE; r++) {
         for (int c = 0; c < COLONNE - 3; c++) {
             giocatore = partite[id_partita].griglia[r][c];
-            if (giocatore != 0 && partite[id_partita].griglia[r][c+1] == giocatore && 
-                partite[id_partita].griglia[r][c+2] == giocatore && partite[id_partita].griglia[r][c+3] == giocatore) return giocatore;
+            if (giocatore != 0 &&
+                partite[id_partita].griglia[r][c+1] == giocatore &&
+                partite[id_partita].griglia[r][c+2] == giocatore &&
+                partite[id_partita].griglia[r][c+3] == giocatore) return giocatore;
         }
     }
+
+    /* Verticale */
     for (int r = 0; r < RIGHE - 3; r++) {
         for (int c = 0; c < COLONNE; c++) {
             giocatore = partite[id_partita].griglia[r][c];
-            if (giocatore != 0 && partite[id_partita].griglia[r+1][c] == giocatore && 
-                partite[id_partita].griglia[r+2][c] == giocatore && partite[id_partita].griglia[r+3][c] == giocatore) return giocatore;
+            if (giocatore != 0 &&
+                partite[id_partita].griglia[r+1][c] == giocatore &&
+                partite[id_partita].griglia[r+2][c] == giocatore &&
+                partite[id_partita].griglia[r+3][c] == giocatore) return giocatore;
         }
     }
+
+    /* Diagonale ascendente */
     for (int r = 3; r < RIGHE; r++) {
         for (int c = 0; c < COLONNE - 3; c++) {
             giocatore = partite[id_partita].griglia[r][c];
-            if (giocatore != 0 && partite[id_partita].griglia[r-1][c+1] == giocatore && 
-                partite[id_partita].griglia[r-2][c+2] == giocatore && partite[id_partita].griglia[r-3][c+3] == giocatore) return giocatore;
+            if (giocatore != 0 &&
+                partite[id_partita].griglia[r-1][c+1] == giocatore &&
+                partite[id_partita].griglia[r-2][c+2] == giocatore &&
+                partite[id_partita].griglia[r-3][c+3] == giocatore) return giocatore;
         }
     }
+
+    /* Diagonale discendente */
     for (int r = 0; r < RIGHE - 3; r++) {
         for (int c = 0; c < COLONNE - 3; c++) {
             giocatore = partite[id_partita].griglia[r][c];
-            if (giocatore != 0 && partite[id_partita].griglia[r+1][c+1] == giocatore && 
-                partite[id_partita].griglia[r+2][c+2] == giocatore && partite[id_partita].griglia[r+3][c+3] == giocatore) return giocatore;
+            if (giocatore != 0 &&
+                partite[id_partita].griglia[r+1][c+1] == giocatore &&
+                partite[id_partita].griglia[r+2][c+2] == giocatore &&
+                partite[id_partita].griglia[r+3][c+3] == giocatore) return giocatore;
         }
     }
 
-    int celle_piene = 0;
+    /* FIX: pareggio — la riga 0 completamente piena significa griglia piena in Forza 4 */
+    int pareggio = 1;
     for (int c = 0; c < COLONNE; c++) {
-        if (partite[id_partita].griglia[0][c] != 0) {
-            celle_piene++;
+        if (partite[id_partita].griglia[0][c] == 0) {
+            pareggio = 0;
+            break;
         }
     }
-    if (celle_piene == COLONNE) return 3; 
+    if (pareggio) return 3;
 
-    return 0; 
+    return 0;
 }
 
 void reset_griglia(int id_partita) {
