@@ -184,36 +184,58 @@ int main() {
 
     inizializza_partite(); 
 
+    // Creazione del socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("Creazione socket fallita"); exit(EXIT_FAILURE);
-    }
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        perror("setsockopt fallita"); exit(EXIT_FAILURE);
+        perror("Creazione socket fallita"); 
+        exit(EXIT_FAILURE);
     }
 
+    // 1. Abilita SO_REUSEADDR
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt SO_REUSEADDR fallita"); 
+        exit(EXIT_FAILURE);
+    }
+
+    // 2. Abilita SO_REUSEPORT (se supportato dal sistema)
+    #ifdef SO_REUSEPORT
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt SO_REUSEPORT fallita"); 
+        exit(EXIT_FAILURE);
+    }
+    #endif
+
+    // Configurazione indirizzo e porta
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
+    // Bind
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("Bind fallito"); exit(EXIT_FAILURE);
+        perror("Bind fallito"); 
+        exit(EXIT_FAILURE);
     }
+
+    // Listen
     if (listen(server_fd, 10) < 0) {
-        perror("Listen fallito"); exit(EXIT_FAILURE);
+        perror("Listen fallito"); 
+        exit(EXIT_FAILURE);
     }
 
     printf("Server C Completato! In attesa sulla porta %d...\n", PORT);
 
+    // Ciclo principale di accettazione
     while(1) {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
             perror("Accept fallito");
             continue;
         }
 
+        // Registrazione nuovo client in mutua esclusione
         pthread_mutex_lock(&lock_globale);
         client_connessi[num_client_connessi++] = new_socket;
         pthread_mutex_unlock(&lock_globale);
 
+        // Allocazione sicura del descrittore per il thread
         int *new_sock = malloc(sizeof(int));
         *new_sock = new_socket;
         pthread_t sn_thread;
