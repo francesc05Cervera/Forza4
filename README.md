@@ -1,5 +1,3 @@
-#Progetto Forza4 di Cervera Francesco e Correra Salvatore
-
 ## Requisiti
 1. Docker Desktop installato e in esecuzione in background
 2. JDK Installato per eseguire le GUI in Java Swing 
